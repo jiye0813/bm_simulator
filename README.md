@@ -112,6 +112,4 @@ open bm_simulator.html
 **석지예** · 게임 사업 PM
 
 - 📧 jiye0813@naver.com
-- 🔗 [포트폴리오](https://www.notion.so/PM-26db3b5bd8e38065bc68fe3aa61283a0)
-- 🔗 [마비노기 의장 대시보드](https://jiye0813.github.io/mabinogi-dress/)
-- 🔗 [경쟁사 BM 모니터링 크롤러](https://github.com/jiye0813/bm-monitor)
+

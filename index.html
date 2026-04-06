@@ -130,7 +130,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Noto S
 
 /* ── DYNAMIC ROWS ── */
 .dyn-row{display:grid;gap:7px;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:7px;padding:7px 10px;margin-bottom:5px;}
-.dyn-row.prob-r{grid-template-columns:2fr 1fr 1fr 28px;}
+.dyn-row.prob-r{grid-template-columns:2fr 1fr 80px 28px;}
 .dyn-row input,.dyn-row select{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-family:'Noto Sans KR',sans-serif;font-size:12px;color:var(--text);outline:none;width:100%;}
 .dyn-row input:focus,.dyn-row select:focus{border-color:var(--orange);}
 .del-btn{width:26px;height:26px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--text-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;font-size:12px;flex-shrink:0;}
@@ -419,8 +419,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
             <button class="btn sm" onclick="addProbRow()">+ 행 추가</button>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 80px 28px;gap:7px;padding:0 2px 5px;font-size:10px;font-weight:700;color:var(--text-muted)">
-          <div>아이템명</div><div>카테고리</div><div>확률(%)</div><div>키 아이템</div><div></div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 80px 28px;gap:7px;padding:0 2px 5px;font-size:10px;font-weight:700;color:var(--text-muted)">
+          <div>아이템명</div><div>확률(%)</div><div>키 아이템</div><div></div>
         </div>
         <div id="probList"></div>
         <button class="dyn-add" onclick="addProbRow()">+ 구성품 추가</button>
@@ -549,13 +549,12 @@ function renderHistDetail(rec) {
     </div>` : ''}
     <table class="prob-table">
       <thead><tr>
-        <th>아이템명</th><th>카테고리</th><th>확률</th><th>키 아이템</th>
+        <th>아이템명</th><th>확률</th><th>키 아이템</th>
       </tr></thead>
       <tbody>
         ${[...(rec.probItems||[])].sort((a,b)=>(+b.prob||0)-(+a.prob||0)).map(p=>`
         <tr>
           <td style="font-weight:600">${esc(p.name||'')}</td>
-          <td><span class="cat-badge">${esc(p.category||'-')}</span></td>
           <td>
             <div class="prob-bar-wrap">
               <div class="prob-bar-bg"><div class="prob-bar-fill" style="width:${Math.min(100,(+p.prob||0)/Math.max(...(rec.probItems||[]).map(x=>+x.prob||0),1)*100)}%"></div></div>
@@ -647,7 +646,7 @@ function calcBUR() {
 }
 
 // ── 확률 행 관리 ──────────────────────────────────────
-function addProbRow(item={name:'',category:'',prob:'',isKey:false}) {
+function addProbRow(item={name:'',prob:'',isKey:false}) {
   editProbs.push({...item});
   renderProbList();
 }
@@ -658,8 +657,6 @@ function renderProbList() {
     <div class="dyn-row prob-r" id="prob_${i}">
       <input type="text" placeholder="아이템명" value="${esc(p.name||'')}"
         oninput="editProbs[${i}].name=this.value"/>
-      <input type="text" placeholder="카테고리" value="${esc(p.category||'')}"
-        oninput="editProbs[${i}].category=this.value"/>
       <input type="number" placeholder="확률" value="${p.prob||''}" step="0.01" min="0" max="100"
         oninput="editProbs[${i}].prob=+this.value;updateProbSum()"/>
       <div class="checkbox-row" style="justify-content:center">
@@ -744,10 +741,9 @@ function importXlsx(input) {
       const wb = XLSX.read(e.target.result, {type:'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1});
-      // 헤더 제거 후 파싱 — 아이템명 / 카테고리 / 확률
+      // 헤더 제거 후 파싱 — 아이템명 / 확률
       const parsed = rows.slice(1).filter(r=>r[0]||r[1]).map(r=>({
         name:     String(r[0]||'').trim(),
-        category: '',
         prob:     parseFloat(String(r[1]||'0').replace(/[^0-9.]/g,''))||0,
         isKey:    false,
       })).filter(p=>p.name);

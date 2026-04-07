@@ -177,6 +177,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .dropzone{border:2px dashed var(--border2);border-radius:10px;padding:28px;text-align:center;color:var(--text-muted);font-size:13px;cursor:pointer;transition:border-color .2s;}
 .dropzone:hover{border-color:var(--blue);color:var(--blue);}
 .dropzone.drag{border-color:var(--blue);background:var(--blue-bg);}
+
+/* ── 일자별 매출 추이 ── */
+.daily-chart-wrap{width:100%;overflow:hidden;margin-top:10px;position:relative;}
+.daily-chart-svg{width:100%;display:block;overflow:visible;}
+.chart-tooltip{position:fixed;background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:7px 11px;font-size:11px;font-weight:600;color:var(--text);pointer-events:none;z-index:9999;display:none;box-shadow:0 4px 20px rgba(0,0,0,.5);white-space:nowrap;}
+.daily-row{display:grid;grid-template-columns:100px 1fr 28px;gap:5px;align-items:center;margin-bottom:4px;}
+.daily-row input{padding:4px 8px;border:1px solid var(--border2);background:var(--surface2);border-radius:5px;color:var(--text);font-size:12px;font-family:inherit;width:100%;transition:border-color .15s;}
+.daily-row input:focus{outline:none;border-color:var(--orange);}
+.daily-date-lbl{font-size:11px;color:var(--text-muted);font-weight:600;}
+.daily-del{width:22px;height:22px;border:none;background:transparent;color:var(--text-muted);cursor:pointer;border-radius:4px;font-size:13px;display:flex;align-items:center;justify-content:center;}
+.daily-del:hover{background:var(--red-bg);color:var(--red);}
 </style>
 </head>
 <body>
@@ -344,6 +355,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
       </table>
     </div>
 
+    <!-- 일자별 예상 매출 추이 -->
+    <div class="card" style="margin-top:14px">
+      <div class="card-title teal">일자별 예상 매출 추이 <span style="font-size:10px;font-weight:400;color:var(--text-muted);margin-left:6px">판매 기간 기준 시뮬레이션</span></div>
+      <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><span style="width:20px;height:2px;background:var(--orange);display:inline-block;border-radius:2px"></span>기본</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><span style="width:20px;height:2px;background:var(--green);display:inline-block;border-radius:2px"></span>낙관</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)"><span style="width:20px;height:2px;background:var(--blue);display:inline-block;border-radius:2px"></span>보수</span>
+      </div>
+      <div class="daily-chart-wrap">
+        <svg class="daily-chart-svg" id="simDailyChart" height="140"></svg>
+      </div>
+      <div id="simDailyLegend" style="margin-top:8px;font-size:11px;color:var(--text-muted);text-align:center"></div>
+    </div>
+
     <!-- 히스토리 비교 -->
     <div class="card">
       <div class="card-title green">과거 유사 판매 비교</div>
@@ -427,6 +452,21 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
         <div style="margin-top:8px;font-size:11px;color:var(--text-muted)" id="probSumLabel"></div>
       </div>
 
+      <!-- 일자별 매출 추이 -->
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title green">
+          일자별 매출 추이
+          <div class="title-action" style="display:flex;gap:6px">
+            <button class="btn sm" onclick="addDailyRow()">+ 날짜 추가</button>
+            <button class="btn sm" onclick="autoFillDailyRows()">기간 자동 채우기</button>
+          </div>
+        </div>
+        <div id="dailyRowList" style="max-height:200px;overflow-y:auto;margin-bottom:8px"></div>
+        <div class="daily-chart-wrap" id="dailyChartWrap" style="display:none">
+          <svg class="daily-chart-svg" id="dailyChartSvg" height="90"></svg>
+        </div>
+      </div>
+
       <!-- 메모 -->
       <div class="card" style="margin-bottom:0">
         <div class="card-title yellow">메모</div>
@@ -446,6 +486,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 
 <input type="file" id="xlsxInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="importXlsx(this)"/>
 <input type="file" id="jsonImport" accept=".json" style="display:none" onchange="importJSON(this)"/>
+<div class="chart-tooltip" id="chartTooltip"></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -583,10 +624,12 @@ let editProbs = [];
 function openNewRecord() {
   editingId = null;
   editProbs = [];
+  dailyData = [];
   document.getElementById('editModalTitle').textContent = '판매 기록 등록';
   document.getElementById('editDeleteBtn').style.display = 'none';
   clearEditForm();
   renderProbList();
+  renderDailyRows();
   document.getElementById('editOverlay').classList.add('open');
 }
 
@@ -609,7 +652,10 @@ function openEditRecord(id) {
   document.getElementById('e_au').value = rec.au||'';
   document.getElementById('e_bur').value = rec.bur||'';
   document.getElementById('e_memo').value = rec.memo||'';
+  editProbs = (rec.probItems||[]).map(p=>({...p}));
+  dailyData = (rec.dailyData||[]).map(d=>({...d}));
   renderProbList();
+  renderDailyRows();
   document.getElementById('editOverlay').classList.add('open');
 }
 
@@ -700,6 +746,7 @@ function saveRecord() {
     bur:       +document.getElementById('e_bur').value||0,
     memo:      document.getElementById('e_memo').value,
     probItems: editProbs.map(p=>({...p})),
+    dailyData: dailyData.map(d=>({...d})),
   };
   if(editingId) {
     const idx = RECORDS.findIndex(r=>r.id===editingId);
@@ -905,6 +952,10 @@ function calcSim() {
 
   // 히스토리 비교
   renderHistCompare(estBU, estRev, estBUR);
+
+  // 일자별 예상 매출 추이 차트
+  const simDays = +document.getElementById('s_days').value||0;
+  renderSimDailyChart(estRev, simDays);
 }
 
 function renderHistCompare(simBU, simRev, simBUR) {
@@ -945,7 +996,228 @@ function renderHistCompare(simBU, simRev, simBUR) {
 }
 
 // ══════════════════════════════════════════════════════
-//  JSON 내보내기/가져오기
+//  일자별 매출 추이 (데이터 입력)
+// ══════════════════════════════════════════════════════
+let dailyData = []; // [{date:'2024-01-01', revenue:0}, ...]
+
+function renderDailyRows() {
+  const container = document.getElementById('dailyRowList');
+  if(!dailyData.length) {
+    container.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:6px 0">날짜 추가 버튼 또는 기간 자동 채우기를 눌러 입력하세요.</div>';
+    document.getElementById('dailyChartWrap').style.display = 'none';
+    return;
+  }
+  container.innerHTML = dailyData.map((d,i)=>`
+    <div class="daily-row">
+      <span class="daily-date-lbl">${d.date}</span>
+      <input type="number" placeholder="매출 (원)" value="${d.revenue||''}"
+        oninput="dailyData[${i}].revenue=+this.value;renderDailyChart()"
+        style="text-align:right"/>
+      <button class="daily-del" onclick="dailyData.splice(${i},1);renderDailyRows()">✕</button>
+    </div>`).join('');
+  renderDailyChart();
+}
+
+function addDailyRow() {
+  const lastDate = dailyData.length
+    ? new Date(dailyData[dailyData.length-1].date)
+    : new Date();
+  if(dailyData.length) lastDate.setDate(lastDate.getDate()+1);
+  dailyData.push({ date: lastDate.toISOString().slice(0,10), revenue: 0 });
+  renderDailyRows();
+}
+
+function autoFillDailyRows() {
+  const s = document.getElementById('e_startDate').value;
+  const e = document.getElementById('e_endDate').value;
+  if(!s || !e) { showToast('판매 시작일·종료일을 먼저 입력하세요.', 'error'); return; }
+  const start = new Date(s), end = new Date(e);
+  if(start > end) { showToast('시작일이 종료일보다 늦습니다.', 'error'); return; }
+  const days = Math.round((end-start)/(1000*60*60*24))+1;
+  if(days > 90) { showToast('90일 이내 기간만 자동 채우기가 가능합니다.', 'error'); return; }
+  // 기존 값 유지하면서 날짜 병합
+  const existing = {};
+  dailyData.forEach(d=>{ existing[d.date] = d.revenue; });
+  dailyData = [];
+  for(let i=0;i<days;i++){
+    const d = new Date(start);
+    d.setDate(start.getDate()+i);
+    const key = d.toISOString().slice(0,10);
+    dailyData.push({ date:key, revenue: existing[key]||0 });
+  }
+  renderDailyRows();
+  showToast(`${days}일 기간 자동 채우기 완료`, 'success');
+}
+
+function renderDailyChart() {
+  const wrap = document.getElementById('dailyChartWrap');
+  const svg  = document.getElementById('dailyChartSvg');
+  const valid = dailyData.filter(d=>d.revenue>0);
+  if(valid.length < 2) { wrap.style.display='none'; return; }
+  wrap.style.display = '';
+
+  const W = svg.parentElement.clientWidth || 500;
+  const H = 90;
+  const PAD = { t:8, r:10, b:22, l:52 };
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  const vals = dailyData.map(d=>d.revenue||0);
+  const maxV = Math.max(...vals, 1);
+  const n = dailyData.length;
+
+  const px = i => PAD.l + (i/(n-1))*cW;
+  const py = v => PAD.t + cH - (v/maxV)*cH;
+
+  // 격자선
+  const gridLines = [0, 0.5, 1].map(r=>{
+    const y = PAD.t + cH - r*cH;
+    const label = r===0 ? '0' : fmtWShort(maxV*r);
+    return `<line x1="${PAD.l}" y1="${y}" x2="${PAD.l+cW}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+            <text x="${PAD.l-4}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--text-muted)">${label}</text>`;
+  }).join('');
+
+  // 채우기 영역
+  const pts = dailyData.map((_,i)=>`${px(i)},${py(vals[i])}`).join(' ');
+  const fillPts = `${px(0)},${PAD.t+cH} ${pts} ${px(n-1)},${PAD.t+cH}`;
+
+  // X축 레이블 (최대 7개)
+  const step = Math.max(1, Math.floor(n/6));
+  const xLabels = dailyData.map((d,i)=>{
+    if(i%step!==0 && i!==n-1) return '';
+    const short = d.date.slice(5); // MM-DD
+    return `<text x="${px(i)}" y="${H-4}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${short}</text>`;
+  }).join('');
+
+  // 인터랙티브 포인트
+  const circles = dailyData.map((d,i)=>
+    `<circle cx="${px(i)}" cy="${py(vals[i])}" r="4" fill="var(--orange)" stroke="var(--surface)" stroke-width="2"
+      style="cursor:pointer"
+      onmouseenter="showChartTip(event,'${d.date}',${d.revenue})"
+      onmouseleave="hideChartTip()"/>`
+  ).join('');
+
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.innerHTML = `
+    ${gridLines}
+    <polyline points="${fillPts}" fill="rgba(255,107,43,0.08)" stroke="none"/>
+    <polyline points="${pts}" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${xLabels}
+    ${circles}`;
+}
+
+function fmtWShort(n) {
+  if(n>=100000000) return (n/100000000).toFixed(0)+'억';
+  if(n>=10000) return Math.round(n/10000)+'만';
+  return Math.round(n).toLocaleString();
+}
+
+function showChartTip(e, date, revenue) {
+  const tip = document.getElementById('chartTooltip');
+  tip.innerHTML = `<span style="color:var(--text-muted)">${date}</span><br/><span style="color:var(--orange);font-size:13px">${fmtW(revenue)}</span>`;
+  tip.style.display = 'block';
+  tip.style.left = (e.clientX+14)+'px';
+  tip.style.top  = (e.clientY-36)+'px';
+}
+function hideChartTip() { document.getElementById('chartTooltip').style.display='none'; }
+
+// ══════════════════════════════════════════════════════
+//  시뮬레이터 일자별 예상 매출 차트
+// ══════════════════════════════════════════════════════
+function renderSimDailyChart(estRevTotal, days) {
+  const svg = document.getElementById('simDailyChart');
+  const legend = document.getElementById('simDailyLegend');
+  if(!days || days<1) { svg.innerHTML=''; legend.textContent='판매 기간(일)을 입력하면 추이가 표시됩니다.'; return; }
+
+  // 실제 일자별 데이터가 있으면 실적선도 같이 그리기
+  const hasReal = dailyData.length >= 2 && dailyData.some(d=>d.revenue>0);
+
+  // 매출 패턴: 초반 집중 후 점감 (launch curve)
+  function buildCurve(totalRev, d) {
+    const pts = [];
+    let sum = 0;
+    for(let i=0;i<d;i++){
+      // 초반 30% 기간에 60% 매출 집중 패턴
+      const w = Math.exp(-i/(d*0.3));
+      pts.push(w);
+      sum+=w;
+    }
+    return pts.map(w=>Math.round(w/sum*totalRev));
+  }
+
+  const scenMults = {base:1.0, opt:1.2, pes:0.8};
+  const baseCurve = buildCurve(estRevTotal, days);
+  const optCurve  = buildCurve(estRevTotal*1.2, days);
+  const pesCurve  = buildCurve(estRevTotal*0.8, days);
+  const realCurve = hasReal ? dailyData.slice(0, days).map(d=>d.revenue||0) : null;
+
+  const allVals = [...baseCurve, ...optCurve, ...pesCurve, ...(realCurve||[])];
+  const maxV = Math.max(...allVals, 1);
+
+  const W = svg.parentElement.clientWidth || 500;
+  const H = 140;
+  const PAD = { t:10, r:10, b:24, l:58 };
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  const px = i => PAD.l + (i/(days-1||1))*cW;
+  const py = v => PAD.t + cH - Math.min(1,v/maxV)*cH;
+
+  function polyline(curve, color, dash='') {
+    const pts = curve.map((_,i)=>`${px(i)},${py(curve[i])}`).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" ${dash?`stroke-dasharray="${dash}"`:''} />`;
+  }
+
+  // 격자
+  const gridLines = [0,0.25,0.5,0.75,1].map(r=>{
+    const y = PAD.t + cH - r*cH;
+    return `<line x1="${PAD.l}" y1="${y}" x2="${PAD.l+cW}" y2="${y}" stroke="var(--border)" stroke-width="1"/>
+            <text x="${PAD.l-4}" y="${y+4}" text-anchor="end" font-size="9" fill="var(--text-muted)">${fmtWShort(maxV*r)}</text>`;
+  }).join('');
+
+  // X축
+  const step = Math.max(1, Math.floor(days/6));
+  const xLabels = baseCurve.map((_,i)=>{
+    if(i%step!==0 && i!==days-1) return '';
+    return `<text x="${px(i)}" y="${H-4}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${i+1}일</text>`;
+  }).join('');
+
+  // 인터랙티브 오버레이
+  const hitArea = baseCurve.map((_,i)=>
+    `<rect x="${px(i)-6}" y="${PAD.t}" width="12" height="${cH}" fill="transparent"
+      onmouseenter="showSimTip(event,${i+1},${baseCurve[i]},${optCurve[i]},${pesCurve[i]}${realCurve?','+realCurve[i]:''})"
+      onmouseleave="hideChartTip()"/>`
+  ).join('');
+
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  svg.setAttribute('width', W);
+  svg.innerHTML = `
+    ${gridLines}
+    ${polyline(pesCurve,  'var(--blue)')}
+    ${polyline(baseCurve, 'var(--orange)')}
+    ${polyline(optCurve,  'var(--green)')}
+    ${realCurve ? polyline(realCurve, 'var(--pink)', '4 2') : ''}
+    ${xLabels}
+    ${hitArea}`;
+
+  legend.textContent = hasReal ? '실선: 시뮬레이션 / 분홍 점선: 실제 입력 데이터' : `총 ${days}일 판매 기간 기준 — 초반 집중 패턴 적용`;
+}
+
+function showSimTip(e, day, base, opt, pes, real) {
+  const tip = document.getElementById('chartTooltip');
+  tip.innerHTML = `<span style="color:var(--text-muted)">${day}일차</span><br/>
+    <span style="color:var(--orange)">기본: ${fmtW(base)}</span><br/>
+    <span style="color:var(--green)">낙관: ${fmtW(opt)}</span><br/>
+    <span style="color:var(--blue)">보수: ${fmtW(pes)}</span>`
+    + (real!=null ? `<br/><span style="color:var(--pink)">실적: ${fmtW(real)}</span>` : '');
+  tip.style.display='block';
+  tip.style.left=(e.clientX+14)+'px';
+  tip.style.top=(e.clientY-60)+'px';
+}
+
+// ══════════════════════════════════════════════════════
+//  저장 시 dailyData 포함
 // ══════════════════════════════════════════════════════
 function exportJSON() {
   const blob = new Blob([JSON.stringify(RECORDS,null,2)],{type:'application/json'});
